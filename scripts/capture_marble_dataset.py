@@ -51,6 +51,17 @@ COMPLETION_MARKERS = {
 }
 
 
+# database tasks pay for a full Docker/Postgres reinit (fresh initdb every
+# task, not a reused container) plus a synthetic large-data load before the
+# agent task even starts -- 300s isn't enough headroom for that on top of
+# the actual multi-agent run, and most database tasks were being killed by
+# the timeout before ever completing (confirmed: 9 task cycles in 45 min
+# with zero successful results written -- consistent with near-every task
+# hitting timeout, not with real completions).
+TASK_TIMEOUT = {"database": 900}
+DEFAULT_TIMEOUT = 300
+
+
 def run_task(category: str, topology: str, task_id: int, python: str, env: dict) -> dict:
     config_path = MULTIAGENTBENCH_DIR / config_folder(category, topology) / f"task_{task_id}.yaml"
     t_start = time.time()
@@ -58,7 +69,8 @@ def run_task(category: str, topology: str, task_id: int, python: str, env: dict)
     try:
         result = subprocess.run(
             [python, "main.py", "--config_path", str(config_path)],
-            cwd=str(MARBLE_DIR), env=env, capture_output=True, text=True, timeout=300,
+            cwd=str(MARBLE_DIR), env=env, capture_output=True, text=True,
+            timeout=TASK_TIMEOUT.get(category, DEFAULT_TIMEOUT),
         )
         record["t_end"] = time.time()
         record["ok"] = COMPLETION_MARKERS[topology] in result.stdout + result.stderr

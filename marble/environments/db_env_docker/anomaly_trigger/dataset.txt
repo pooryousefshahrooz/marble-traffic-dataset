@@ -3349,3 +3349,14 @@ python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100
 python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 started at 1784058702
 python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 ended at 1784058754
 python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 started at 1784059299
+python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 ended at 1784059355
+python main.py --anomaly LOCK_CONTENTION --threads 100 --ncolumn 20 --nrow 100 --colsize 100 started at 1784059629
+python main.py --anomaly LOCK_CONTENTION --threads 100 --ncolumn 20 --nrow 100 --colsize 100 ended at 1784059827
+python main.py --anomaly FETCH_LARGE_DATA started at 1784060006
+python main.py --anomaly FETCH_LARGE_DATA ended at 1784060225
+python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 started at 1784060499
+python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 ended at 1784060554
+python main.py --anomaly FETCH_LARGE_DATA started at 1784060609
+python main.py --anomaly FETCH_LARGE_DATA ended at 1784060828
+python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 started at 1784061099
+python main.py --anomaly INSERT_LARGE_DATA --threads 100 --ncolumn 20 --nrow 100 --colsize 100 ended at 1784061154
