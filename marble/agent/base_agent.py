@@ -213,6 +213,7 @@ class BaseAgent:
         if len(tools) == 0:
             result = model_prompting(
                 llm_model=self.llm,
+                agent_id=self.agent_id,
                 messages=[{"role": "user", "content": act_task}],
                 return_num=1,
                 max_token_num=512,
@@ -223,6 +224,7 @@ class BaseAgent:
         else:
             result = model_prompting(
                 llm_model=self.llm,
+                agent_id=self.agent_id,
                 messages=[{"role": "user", "content": act_task}],
                 return_num=1,
                 max_token_num=512,
@@ -465,6 +467,7 @@ class BaseAgent:
             )
             result = model_prompting(
                 llm_model=self.llm,
+                agent_id=self.agent_id,
                 messages=[
                     {"role": "system", "content": session_current_agent.system_message},
                     {"role": "user", "content": communicate_task},
@@ -517,6 +520,7 @@ class BaseAgent:
         )
         result = model_prompting(
             llm_model=self.llm,
+            agent_id=self.agent_id,
             messages=[
                 {"role": "system", "content": system_message_summary},
                 {"role": "user", "content": summary_task},
@@ -622,6 +626,7 @@ class BaseAgent:
         # Use memory entries, persona, and task history to determine the next task
         next_task = model_prompting(
             llm_model=self.llm,
+            agent_id=self.agent_id,
             messages=[
                 {
                     "role": "user",
@@ -735,6 +740,7 @@ class BaseAgent:
         "}\n"
         response = model_prompting(
             llm_model=self.llm,
+            agent_id=self.agent_id,
             messages=[{"role": "system", "content": prompt}],
             return_num=1,
             max_token_num=512,
@@ -778,6 +784,7 @@ class BaseAgent:
             prompt += f"- Agent '{agent_id}': {result}\n"
         response = model_prompting(
             llm_model=self.llm,
+            agent_id=self.agent_id,
             messages=[{"role": "system", "content": prompt}],
             return_num=1,
             max_token_num=512,
@@ -827,6 +834,7 @@ class BaseAgent:
         # Use the LLM to select the next agent and create a planning task
         response = model_prompting(
             llm_model=self.llm,
+            agent_id=self.agent_id,
             messages=[{"role": "system", "content": prompt}],
             return_num=1,
             max_token_num=256,

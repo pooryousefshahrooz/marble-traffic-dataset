@@ -1,9 +1,29 @@
+import json
+import os
+import time
+
 import litellm
 from beartype import beartype
 from beartype.typing import Any, Dict, List, Optional
 from litellm.types.utils import Message
 
 from marble.llms.error_handler import api_calling_error_exponential_backoff
+
+
+def _log_agent_call(agent_id: Optional[str], call_start: float, call_end: float) -> None:
+    # Sidecar log of (agent_id, call_start, call_end) for every LLM call, so
+    # a task's single aggregated pcap can later be sub-sliced by which
+    # agent(s) were actually talking during a given time window -- lets
+    # analysis pick any subset of K agents post-hoc without needing to
+    # re-capture. Off by default; capture_marble_dataset.py points
+    # MARBLE_AGENT_CALL_LOG at a per-task file when it wants this.
+    if agent_id is None:
+        return
+    log_path = os.environ.get("MARBLE_AGENT_CALL_LOG")
+    if not log_path:
+        return
+    with open(log_path, "a") as f:
+        f.write(json.dumps({"agent_id": agent_id, "call_start": call_start, "call_end": call_end}) + "\n")
 
 
 @beartype
@@ -19,6 +39,7 @@ def model_prompting(
     mode: Optional[str] = None,
     tools: Optional[List[Dict[str, Any]]] = None,
     tool_choice: Optional[str] = None,
+    agent_id: Optional[str] = None,
 ) -> List[Message]:
     """
     Select model via router in LiteLLM with support for function calling.
@@ -32,13 +53,12 @@ def model_prompting(
         # genuinely encrypted on the wire for capture, instead of hitting
         # Ollama's plaintext HTTP API directly. The proxy uses a self-signed
         # research-lab cert, so skip chain verification for it specifically.
-        import os
-
         base_url = os.environ.get("MARBLE_OLLAMA_PROXY_URL", "http://127.0.0.1:11434")
         if base_url.startswith("https://"):
             litellm.ssl_verify = False
     else:
         base_url = None
+    call_start = time.time()
     completion = litellm.completion(
         model=llm_model,
         messages=messages,
@@ -51,6 +71,8 @@ def model_prompting(
         tool_choice=tool_choice,
         base_url=base_url,
     )
+    call_end = time.time()
+    _log_agent_call(agent_id, call_start, call_end)
     message_0: Message = completion.choices[0].message
     assert message_0 is not None
     assert isinstance(message_0, Message)

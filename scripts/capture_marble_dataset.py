@@ -62,10 +62,18 @@ TASK_TIMEOUT = {"database": 900}
 DEFAULT_TIMEOUT = 300
 
 
-def run_task(category: str, topology: str, task_id: int, python: str, env: dict) -> dict:
+def run_task(category: str, topology: str, task_id: int, python: str, env: dict, agent_call_log_dir: Path) -> dict:
     config_path = MULTIAGENTBENCH_DIR / config_folder(category, topology) / f"task_{task_id}.yaml"
     t_start = time.time()
-    record = {"category": category, "topology": topology, "task_id": task_id, "t_start": t_start, "t_end": None, "ok": False, "info": ""}
+    record = {"category": category, "topology": topology, "task_id": task_id, "t_start": t_start, "t_end": None, "ok": False, "info": "", "agent_calls": []}
+    # Per-task sidecar log: every model_prompting() call inside this task's
+    # subprocess appends (agent_id, call_start, call_end) here (see
+    # marble/llms/model_prompting.py's MARBLE_AGENT_CALL_LOG handling), so
+    # a task's aggregated pcap can later be sub-sliced by which agent(s)
+    # were talking during a given window.
+    call_log_path = agent_call_log_dir / f"{category}_{task_id}.jsonl"
+    call_log_path.unlink(missing_ok=True)
+    env = {**env, "MARBLE_AGENT_CALL_LOG": str(call_log_path)}
     try:
         result = subprocess.run(
             [python, "main.py", "--config_path", str(config_path)],
@@ -79,6 +87,10 @@ def run_task(category: str, topology: str, task_id: int, python: str, env: dict)
     except subprocess.TimeoutExpired:
         record["t_end"] = time.time()
         record["info"] = "timeout"
+    if call_log_path.exists():
+        with call_log_path.open() as f:
+            record["agent_calls"] = [json.loads(line) for line in f if line.strip()]
+        call_log_path.unlink()
     return record
 
 
@@ -101,6 +113,8 @@ def main() -> None:
     out_root = Path(args.out_root)
     out_root.mkdir(parents=True, exist_ok=True)
     raw_pcap = out_root / "continuous_raw.pcap"
+    agent_call_log_dir = out_root / "agent_calls_tmp"
+    agent_call_log_dir.mkdir(exist_ok=True)
 
     python = sys.executable
     env = os.environ.copy()
@@ -137,7 +151,7 @@ def main() -> None:
                     break
                 pcap_size_before = raw_pcap.stat().st_size if raw_pcap.exists() else 0
                 print(f"running {category}/{args.topology}/task_{task_id}...")
-                rec = run_task(category, args.topology, task_id, python, env)
+                rec = run_task(category, args.topology, task_id, python, env, agent_call_log_dir)
                 records.append(rec)
                 status = "OK" if rec["ok"] else f"FAILED: {rec['info'][:150]}"
                 print(f"  {status} ({rec['t_end']-rec['t_start']:.1f}s)")
@@ -179,17 +193,24 @@ def main() -> None:
 
     index_path = out_root / "dataset_index.csv"
     with index_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["category", "task_id", "repetition_id", "model", "topology", "llm_pcap", "llm_packets"])
+        writer = csv.DictWriter(f, fieldnames=["category", "task_id", "repetition_id", "model", "topology", "llm_pcap", "llm_packets", "agent_calls_json"])
         writer.writeheader()
         for i, rec in enumerate(ok_records):
-            out_name = f"{rec['category']}_{rec['topology']}_ollama-llama3.2-3b_{rec['task_id']:03d}_rep{args.repetition_id}.pcap"
-            out_path = llm_dir / out_name
+            base_name = f"{rec['category']}_{rec['topology']}_ollama-llama3.2-3b_{rec['task_id']:03d}_rep{args.repetition_id}"
+            out_path = llm_dir / f"{base_name}.pcap"
             if buckets[i]:
                 wrpcap(str(out_path), buckets[i])
+            # Per-agent call-timing sidecar (agent_id, call_start, call_end
+            # for every LLM call in this task) -- lets analysis later
+            # extract traffic for any chosen subset of agents from this same
+            # pcap, without needing to re-capture per subset.
+            calls_path = llm_dir / f"{base_name}.agent_calls.json"
+            calls_path.write_text(json.dumps(rec["agent_calls"]))
             writer.writerow({
                 "category": rec["category"], "task_id": rec["task_id"], "repetition_id": args.repetition_id,
                 "model": "llama3.2:3b", "topology": rec["topology"],
                 "llm_pcap": str(out_path) if buckets[i] else "", "llm_packets": len(buckets[i]),
+                "agent_calls_json": str(calls_path),
             })
     print(f"wrote index: {index_path}")
 
