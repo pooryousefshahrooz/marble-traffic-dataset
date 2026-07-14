@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import json
 import os
 import subprocess
@@ -24,6 +25,12 @@ import time
 from pathlib import Path
 
 from scapy.all import PcapReader, wrpcap  # type: ignore
+
+# stdout is fully buffered when redirected to a file/log (not a TTY), so
+# without this, `tail -f` on a running batch's log shows nothing until the
+# whole process exits -- useless for live progress tracking on a multi-hour
+# batch.
+print = functools.partial(print, flush=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 MARBLE_DIR = ROOT / "marble"
@@ -154,7 +161,17 @@ def main() -> None:
                 rec = run_task(category, args.topology, task_id, python, env, agent_call_log_dir)
                 records.append(rec)
                 status = "OK" if rec["ok"] else f"FAILED: {rec['info'][:150]}"
-                print(f"  {status} ({rec['t_end']-rec['t_start']:.1f}s)")
+                duration = rec["t_end"] - rec["t_start"]
+                print(f"  {status} ({duration:.1f}s)")
+                # Structured live-progress log, one line per task, so a
+                # running batch's real-time pass/fail/timing can be queried
+                # without waiting for the final dataset_index.csv (which is
+                # only written after the whole batch completes).
+                with (out_root / "progress.jsonl").open("a") as pf:
+                    pf.write(json.dumps({
+                        "category": category, "task_id": task_id, "ok": rec["ok"],
+                        "duration_s": round(duration, 1), "info": rec["info"][:150] if not rec["ok"] else "",
+                    }) + "\n")
                 # A successful task always makes at least one real LLM call over
                 # the proxied port -- if tcpdump is alive but has stopped actually
                 # writing packets (hung, not exited -- process.poll() misses this),
