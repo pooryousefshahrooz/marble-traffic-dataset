@@ -17,6 +17,23 @@ def _log_agent_call(agent_id: Optional[str], call_start: float, call_end: float)
     # analysis pick any subset of K agents post-hoc without needing to
     # re-capture. Off by default; capture_marble_dataset.py points
     # MARBLE_AGENT_CALL_LOG at a per-task file when it wants this.
+    #
+    # This must NEVER let a logging failure affect the real LLM call: this
+    # function runs after litellm.completion() has already succeeded, and
+    # model_prompting() is wrapped in a 5x-retry-with-backoff decorator that
+    # catches *any* exception raised anywhere in the function body -- an
+    # unguarded write here (e.g. the target directory not existing from a
+    # subprocess's cwd, which happened in practice with a relative
+    # --out-root) silently turned every real LLM call into 5 redundant
+    # real LLM calls plus ~31s of backoff sleep before ultimately crashing
+    # with a beartype violation on the resulting None return.
+    try:
+        _write_agent_call(agent_id, call_start, call_end)
+    except Exception as e:
+        print(f"WARNING: failed to log agent call (non-fatal, continuing): {e}")
+
+
+def _write_agent_call(agent_id: Optional[str], call_start: float, call_end: float) -> None:
     if agent_id is None:
         return
     log_path = os.environ.get("MARBLE_AGENT_CALL_LOG")

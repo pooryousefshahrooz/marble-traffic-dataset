@@ -117,7 +117,14 @@ def main() -> None:
                               "the *same* task content, as distinct from task_id which selects "
                               "*which* of the sampled tasks within a category)")
     args = parser.parse_args()
-    out_root = Path(args.out_root)
+    # Must be absolute: this path gets passed via MARBLE_AGENT_CALL_LOG to a
+    # subprocess whose cwd is MARBLE_DIR, not wherever this script was
+    # invoked from -- a relative path here silently resolves to the wrong
+    # location in that subprocess. Confirmed in practice: caused every real
+    # agent LLM call to hit a FileNotFoundError in _log_agent_call(),
+    # triggering 5x redundant real LLM calls (retry-with-backoff) before
+    # crashing, per call.
+    out_root = Path(args.out_root).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
     raw_pcap = out_root / "continuous_raw.pcap"
     agent_call_log_dir = out_root / "agent_calls_tmp"
