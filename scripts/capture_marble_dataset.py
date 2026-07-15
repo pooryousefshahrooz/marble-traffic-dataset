@@ -59,13 +59,19 @@ COMPLETION_MARKERS = {
 
 
 # database tasks pay for a full Docker/Postgres reinit (fresh initdb every
-# task, not a reused container) plus a synthetic large-data load before the
-# agent task even starts -- 300s isn't enough headroom for that on top of
-# the actual multi-agent run, and most database tasks were being killed by
-# the timeout before ever completing (confirmed: 9 task cycles in 45 min
-# with zero successful results written -- consistent with near-every task
-# hitting timeout, not with real completions).
-TASK_TIMEOUT = {"database": 900}
+# task, not a reused container) plus a synthetic anomaly-injection setup
+# before the agent task even starts. 8 of the 15 sampled database tasks
+# (anomaly type REDUNDANT_INDEX/LOCK_CONTENTION/VACUUM -- see
+# marble/environments/db_env_docker/anomaly_trigger/anomaly.py) build or
+# drop 10+ indexes and/or run a 100-thread concurrent workload against the
+# table with three hardcoded 10s sleeps baked in, plus a possible full
+# Postgres restart if CPU/mem crosses a threshold -- confirmed via direct
+# code inspection this is much heavier than the other 7 tasks'
+# INSERT_LARGE_DATA/FETCH_LARGE_DATA anomaly, which is a plain bulk insert.
+# 900s wasn't enough headroom for these on top of the actual 5-agent
+# investigation (confirmed: 5 consecutive real timeouts at exactly the
+# 900s ceiling for one such task, both topologies, all repetitions).
+TASK_TIMEOUT = {"database": 1500}
 DEFAULT_TIMEOUT = 300
 
 
