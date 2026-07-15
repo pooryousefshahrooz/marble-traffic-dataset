@@ -8,9 +8,9 @@ stored.
 
 ## Requirements
 
-A Linux machine with `sudo` access, internet access, and enough disk for
-Docker images + an LLM model (~5GB) + packet captures (grows with dataset
-size, budget a few GB).
+A Linux machine, internet access, and enough disk for Docker images + an
+LLM model (~5GB) + packet captures (grows with dataset size, budget a few
+GB). Root/`sudo` access is preferred but not required -- see below.
 
 ## Run
 
@@ -18,22 +18,39 @@ size, budget a few GB).
 git clone <this-repo-url>
 cd MARBLE
 ./setup.sh              # installs Docker, Ollama, Python 3.11 venv, deps,
-                         # TLS cert, and passwordless sudo for tcpdump
-                         # (one-time; asks for your sudo password)
+                         # TLS cert, and tcpdump capture permission
 source .venv/bin/activate
 ./run_full_dataset.sh   # runs the full dataset collection (hours)
 ```
 
-That's it. `run_full_dataset.sh` runs all 4 coordination topologies
-(graph/star/tree/chain) x all 4 task categories (bargaining/research/
-coding/database) x 15 sampled real tasks each, capturing each run's
-agent<->LLM traffic as an individually sliced `.pcap`, and writes a merged
-`dataset_index_merged.csv` describing every capture (category, task_id,
-repetition_id, model, topology, pcap path, packet count).
+That's it. `run_full_dataset.sh` runs the graph and star coordination
+topologies x all 4 task categories (bargaining/research/coding/database) x
+15 sampled real tasks each (up to 120 real MARBLE runs), capturing each
+run's agent<->LLM traffic as an individually sliced `.pcap` plus a
+per-agent call-timing sidecar (`*.agent_calls.json` -- which agent made
+each LLM call and when, so you can later extract traffic for any subset of
+K agents from a task without re-capturing), and writes a merged
+`dataset_index_merged.csv` describing every capture.
 
 It's safe to interrupt (Ctrl-C) and resume a specific topology/category
 without re-running already-completed task_ids -- see
-`python3 scripts/capture_marble_dataset.py --help` for `--start-rep`.
+`python3 scripts/capture_marble_dataset.py --help` for `--start-rep`. Live
+per-task pass/fail and timing while a batch is running:
+`tail -f captures_marble_full_<topology>/progress.jsonl`.
+
+### No sudo access?
+
+`setup.sh` works without it -- it skips anything that needs root (package
+installs, Docker install, granting `tcpdump` capture capability) and prints
+exactly what to hand an admin instead. The only one that actually matters
+for capture to work is granting `tcpdump` raw-packet capability, which is
+**not** the same permission as Docker access -- being in the `docker`
+group doesn't grant it. One-time fix, run once by anyone with root:
+```
+sudo setcap cap_net_raw,cap_net_admin+eip $(which tcpdump)
+```
+After that, any user can run `tcpdump` (and this pipeline) without `sudo`
+at all. Re-run `./setup.sh` afterward to pick it up.
 
 ## What's actually captured
 
@@ -53,6 +70,30 @@ hardcoded `sudo` in the Docker environment, an exception-type mismatch in
 plan parsing) blocked star/tree/chain topologies and the database category
 from running at all. Those are fixed here as part of this codebase, not
 tracked as a separate patch.
+
+The capture pipeline (`scripts/capture_marble_dataset.py`) also has some
+hardening worth knowing about if you're debugging a stalled/slow run:
+- Aborts immediately if the TLS proxy port is already held by a leftover
+  process, instead of silently limping along.
+- Aborts if `tcpdump` dies OR goes silent (alive but producing zero new
+  capture bytes during a successful task) instead of burning hours of
+  compute with no data being recorded.
+- The `database` category gets a 900s per-task timeout (vs 300s default)
+  -- Docker/Postgres reinit plus a synthetic large-data load before the
+  agent task even starts doesn't fit in 300s, and most database tasks were
+  being killed by the timeout before ever completing.
+- If running unattended on a laptop, use `caffeinate -di -w <pid>` (macOS)
+  or equivalent (`systemd-inhibit` on Linux) -- a sleeping machine pauses
+  the batch process too, and can silently eat hours of wall-clock time
+  with zero progress.
+
+Scope: only **graph** and **star** topologies are collected by
+`run_full_dataset.sh`. tree and chain were dropped from the paper's scope
+-- tree hit unresolved capture-stability issues under this pipeline's
+Docker/database load that weren't worth chasing further, and chain doesn't
+gain anything from the point below anyway. Both still run fine via
+`scripts/capture_marble_dataset.py --topology tree` / `--topology chain`
+directly if you want to explore them.
 
 One methodology note worth knowing: MARBLE's `relationships` config field
 (and the graph adjacency it could in principle encode) is *not* used by
