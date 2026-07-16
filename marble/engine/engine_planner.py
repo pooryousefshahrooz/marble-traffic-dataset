@@ -226,7 +226,9 @@ class EnginePlanner:
                     f"Received task assignment using group discussion: {assignment}"
                 )
                 return assignment
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, ValueError) as e:
+                # json_parse() re-raises JSONDecodeError as ValueError --
+                # catching only JSONDecodeError here never catches it.
                 self.logger.error(
                     f"Failed to parse JSON response in group discussion: {e}"
                 )
@@ -305,7 +307,9 @@ class EnginePlanner:
                         assignment.get("evolving_experiences", ""),
                     )
                 return assignment
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, ValueError) as e:
+                # json_parse() re-raises JSONDecodeError as ValueError --
+                # catching only JSONDecodeError here never catches it.
                 self.logger.error(
                     f"Failed to parse JSON response in cognitive evolve: {e}"
                 )
@@ -394,7 +398,12 @@ class EnginePlanner:
                     f"Received task assignment using naive planning: {assignment}"
                 )
                 return assignment
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, ValueError) as e:
+                # json_parse() re-raises JSONDecodeError as ValueError --
+                # catching only JSONDecodeError here never catches it, which
+                # crashed every star-topology task hitting a malformed LLM
+                # JSON response uncaught (confirmed: 24/32 star failures in
+                # the incremental run were exactly this).
                 self.logger.error(f"Failed to parse JSON response in naive mode: {e}")
                 return {"tasks": {}, "continue": False}
 
