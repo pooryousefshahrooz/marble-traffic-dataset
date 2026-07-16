@@ -95,7 +95,12 @@ def main() -> None:
     parser.add_argument("--categories", nargs="*", default=list(CATEGORIES), help="restrict to a subset (default: all 4)")
     parser.add_argument("--task-ids", type=int, nargs="*", default=list(range(1, NUM_TASKS + 1)), help="restrict to a subset (default: 1-15)")
     parser.add_argument("--topologies", nargs="*", default=list(TOPOLOGIES), help="restrict to a subset (default: graph star)")
-    parser.add_argument("--reps", type=int, default=NUM_REPS, help="repetitions per combo, 0-indexed up to this count (default: 3)")
+    parser.add_argument("--reps", type=int, default=NUM_REPS, help="how many repetitions to add in this run (default: 3)")
+    parser.add_argument("--rep-offset", type=int, default=0,
+                         help="repetition_id to start this batch at (default: 0). Run again "
+                              "with e.g. --rep-offset 3 to add a fresh batch of --reps more "
+                              "repetitions on top of what's already collected, instead of "
+                              "overlapping with repetition_ids already done.")
     args = parser.parse_args()
 
     # Must be absolute -- see capture_marble_dataset.py's out_root comment
@@ -117,8 +122,10 @@ def main() -> None:
             seed_from_existing(index_path, llm_dir, Path(args.seed_from))
 
     done = load_done(index_path)
-    total = len(args.task_ids) * len(args.categories) * len(args.topologies) * args.reps
-    print(f"{len(done)}/{total} (category, task_id, topology, repetition_id) combos already done -- skipping those")
+    rep_range = range(args.rep_offset, args.rep_offset + args.reps)
+    total = len(args.task_ids) * len(args.categories) * len(args.topologies) * len(rep_range)
+    print(f"targeting repetition_id {rep_range.start}..{rep_range.stop - 1} this run")
+    print(f"{len(done)} combos already done overall -- {total} targeted this run, skipping any already done")
 
     python = sys.executable
     env = os.environ.copy()
@@ -183,7 +190,7 @@ def main() -> None:
         for task_id in args.task_ids:
             for category in args.categories:
                 for topology in args.topologies:
-                    for repetition_id in range(args.reps):
+                    for repetition_id in rep_range:
                         key = (category, task_id, topology, repetition_id)
                         if key in done:
                             continue
