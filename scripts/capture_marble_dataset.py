@@ -36,7 +36,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MARBLE_DIR = ROOT / "marble"
 MULTIAGENTBENCH_DIR = ROOT / "multiagentbench"
 
-CATEGORIES = ("research", "database", "coding", "bargaining", "bugfix")
+CATEGORIES = ("research", "database", "coding", "bargaining", "bugfix",
+              "swe_bench", "deep_research", "medical_diagnosis", "legal_review", "debate")
 
 
 def config_folder(category: str, topology: str) -> str:
