@@ -89,14 +89,39 @@ if [[ -z "$PY" ]]; then
     fi
     if [[ -z "$PY" ]]; then
         echo "No sudo / apt install of python3.11 unavailable -- falling back to a portable build (no root needed)."
+        # Detect OS + arch so we download a build that's actually
+        # executable here -- a hardcoded Linux binary silently fails with
+        # "cannot execute binary file" on macOS with no clear error.
+        OS_NAME="$(uname -s)"
+        ARCH_NAME="$(uname -m)"
+        case "$OS_NAME-$ARCH_NAME" in
+            Linux-x86_64)   PY_TARGET="x86_64-unknown-linux-gnu" ;;
+            Linux-aarch64)  PY_TARGET="aarch64-unknown-linux-gnu" ;;
+            Darwin-x86_64)  PY_TARGET="x86_64-apple-darwin" ;;
+            Darwin-arm64)   PY_TARGET="aarch64-apple-darwin" ;;
+            *)
+                echo "ERROR: no portable Python build known for $OS_NAME-$ARCH_NAME."
+                echo "Install Python 3.9-3.11 manually and re-run ./setup.sh."
+                exit 1
+                ;;
+        esac
         curl -fsSL -o /tmp/cpython.tar.gz \
-            "https://github.com/astral-sh/python-build-standalone/releases/download/20250106/cpython-3.11.11+20250106-x86_64-unknown-linux-gnu-install_only.tar.gz"
+            "https://github.com/astral-sh/python-build-standalone/releases/download/20250106/cpython-3.11.11+20250106-${PY_TARGET}-install_only.tar.gz"
         mkdir -p .pyruntime && tar -xzf /tmp/cpython.tar.gz -C .pyruntime
         PY="$HERE/.pyruntime/python/bin/python3.11"
     fi
 fi
 
+if [[ ! -x "$(command -v "$PY" 2>/dev/null || echo "$PY")" ]]; then
+    echo "ERROR: no usable Python found/built ($PY). Cannot continue."
+    exit 1
+fi
+
 "$PY" -m venv .venv
+if [[ ! -f .venv/bin/activate ]]; then
+    echo "ERROR: venv creation failed (.venv/bin/activate missing). Cannot continue."
+    exit 1
+fi
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -105,11 +130,32 @@ pip install -e .
 echo "=== [5/6] TLS proxy cert ==="
 bash scripts/generate_certs.sh
 
-echo "=== [6/6] tcpdump without sudo (setcap) ==="
+echo "=== [6/6] tcpdump capture permission ==="
 TCPDUMP_BIN="$(command -v tcpdump || true)"
 if [[ -z "$TCPDUMP_BIN" ]]; then
     echo "tcpdump not found -- cannot capture traffic until it's installed."
     ADMIN_TODO+=("install tcpdump")
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+    # setcap is Linux-only (Linux capabilities); macOS has no equivalent
+    # for tcpdump specifically. The working pattern here is a narrowly
+    # scoped NOPASSWD sudoers rule for tcpdump alone, not general sudo.
+    if sudo -n "$TCPDUMP_BIN" -h &>/dev/null; then
+        echo "$TCPDUMP_BIN already runs without a password prompt -- nothing to do."
+    elif [[ "$HAVE_SUDO" == "1" ]]; then
+        SUDOERS_LINE="$USER ALL=(root) NOPASSWD: $TCPDUMP_BIN"
+        SUDOERS_FILE="/etc/sudoers.d/marble-tcpdump"
+        if [[ ! -f "$SUDOERS_FILE" ]]; then
+            echo "$SUDOERS_LINE" | sudo tee "$SUDOERS_FILE" > /dev/null
+            sudo chmod 440 "$SUDOERS_FILE"
+            sudo visudo -c -f "$SUDOERS_FILE"
+            echo "granted passwordless sudo for $TCPDUMP_BIN"
+        else
+            echo "sudoers rule already exists at $SUDOERS_FILE, skipping"
+        fi
+    else
+        echo "no passwordless sudo -- cannot grant tcpdump permission myself."
+        ADMIN_TODO+=("run once, as root: echo '$USER ALL=(root) NOPASSWD: $TCPDUMP_BIN' | sudo tee /etc/sudoers.d/marble-tcpdump && sudo chmod 440 /etc/sudoers.d/marble-tcpdump")
+    fi
 elif command -v getcap &>/dev/null && getcap "$TCPDUMP_BIN" 2>/dev/null | grep -q cap_net_raw; then
     echo "$TCPDUMP_BIN already has cap_net_raw -- no sudo needed to capture."
 elif [[ "$HAVE_SUDO" == "1" ]]; then
