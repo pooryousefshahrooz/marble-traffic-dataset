@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Waits for the currently-running batch (pid $1) to finish, then keeps
-# automatically launching further repetition batches (rep-offset 6, 9, 12,
-# ...) one after another, forever (until MAX_REP_OFFSET), with no human
-# interaction needed in between -- avoids needing a fresh approval for
-# every new batch launch.
+# Keeps automatically launching further repetition batches (rep-offset 6,
+# 9, 12, ...) one after another, forever (until MAX_REP_OFFSET), with no
+# human interaction needed in between -- avoids needing a fresh approval
+# for every new batch launch. Run standalone (no arguments) after
+# ./run_full_dataset.sh has finished reps 0-5, or pass a still-running
+# batch's pid as $1 to wait for it to finish first before continuing.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source .venv/bin/activate
 
-WAIT_PID="$1"
+WAIT_PID="${1:-}"
 MAX_REP_OFFSET=60   # stop after repetition_id 62 (i.e. 21 batches of 3) -- generous headroom, not truly infinite
 
-echo "[$(date)] waiting for current batch (pid $WAIT_PID) to finish..."
-while kill -0 "$WAIT_PID" 2>/dev/null; do
-    sleep 20
-done
-echo "[$(date)] current batch finished."
+if [[ -n "$WAIT_PID" ]] && kill -0 "$WAIT_PID" 2>/dev/null; then
+    echo "[$(date)] waiting for current batch (pid $WAIT_PID) to finish..."
+    while kill -0 "$WAIT_PID" 2>/dev/null; do
+        sleep 20
+    done
+    echo "[$(date)] current batch finished."
+else
+    echo "[$(date)] no batch to wait for, starting immediately."
+fi
 
 for offset in $(seq 6 3 $MAX_REP_OFFSET); do
     echo "[$(date)] launching rep-offset $offset (reps $offset,$((offset+1)),$((offset+2)))..."

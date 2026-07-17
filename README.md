@@ -24,19 +24,27 @@ source .venv/bin/activate
 ```
 
 That's it. `run_full_dataset.sh` runs the graph and star coordination
-topologies x all 4 task categories (bargaining/research/coding/database) x
-15 sampled real tasks each (up to 120 real MARBLE runs), capturing each
-run's agent<->LLM traffic as an individually sliced `.pcap` plus a
-per-agent call-timing sidecar (`*.agent_calls.json` -- which agent made
-each LLM call and when, so you can later extract traffic for any subset of
-K agents from a task without re-capturing), and writes a merged
-`dataset_index_merged.csv` describing every capture.
+topologies x 10 task categories (bargaining/research/coding/database/
+bugfix/swe_bench/deep_research/medical_diagnosis/legal_review/debate) x 15
+sampled real tasks each x 6 repetitions (up to 1800 real MARBLE runs),
+capturing each run's agent<->LLM traffic as an individually sliced `.pcap`
+plus a per-agent call-timing sidecar (`*.agent_calls.json` -- which agent
+made each LLM call and when, so you can later extract traffic for any
+subset of K agents from a task without re-capturing).
 
-It's safe to interrupt (Ctrl-C) and resume a specific topology/category
-without re-running already-completed task_ids -- see
-`python3 scripts/capture_marble_dataset.py --help` for `--start-rep`. Live
-per-task pass/fail and timing while a batch is running:
-`tail -f captures_marble_full_<topology>/progress.jsonl`.
+It builds the dataset task_id-outermost (every category x topology x
+repetition for task 1, then task 2, ...) and saves after every single run,
+not just at the end of a batch -- `captures_marble_incremental/
+dataset_index.csv` is usable and grows live throughout, and it's safe to
+interrupt at any point; re-running skips everything already collected.
+Live per-task pass/fail and timing: `tail -f
+captures_marble_incremental/progress.jsonl`.
+
+To keep extending the dataset with more repetitions beyond the initial 6
+(recommended for statistical robustness), run further batches with
+`--rep-offset` (see `python3 scripts/capture_marble_incremental.py --help`)
+-- or just run `bash scripts/repetition_chain.sh`, which keeps launching
+successive repetition batches automatically and unattended.
 
 ### No sudo access?
 
