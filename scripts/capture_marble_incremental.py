@@ -36,7 +36,7 @@ print = functools.partial(print, flush=True)
 ROOT = Path(__file__).resolve().parent.parent
 MARBLE_DIR = ROOT / "marble"
 
-CATEGORIES = ("bargaining", "research", "coding", "database")
+CATEGORIES = ("bargaining", "research", "coding", "database", "bugfix")
 TOPOLOGIES = ("graph", "star")
 NUM_TASKS = 15
 NUM_REPS = 3  # repetition_id 0, 1, 2
