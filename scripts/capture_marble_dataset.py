@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import csv
 import functools
+import hashlib
 import json
 import os
 import subprocess
@@ -213,13 +214,22 @@ def main() -> None:
     llm_dir = out_root / "captures_llm"
     llm_dir.mkdir(exist_ok=True)
     buckets: dict[int, list] = {i: [] for i in range(len(ok_records))}
+    # Dedupe byte-identical packets per bucket -- an orphaned tcpdump from a
+    # prior interrupted run (no passwordless sudo kill available) can still
+    # be alive and independently capture the same real traffic into this
+    # same shared file. Confirmed via md5 that duplicates are byte-for-byte
+    # identical, so keeping first-occurrence-only is safe.
+    seen_hashes: dict[int, set] = {i: set() for i in range(len(ok_records))}
     if raw_pcap.exists():
         with PcapReader(str(raw_pcap)) as reader:
             for pkt in reader:
                 ts = float(pkt.time)
                 for i, rec in enumerate(ok_records):
                     if rec["t_start"] - 1.0 <= ts <= rec["t_end"] + 1.0:
-                        buckets[i].append(pkt)
+                        h = hashlib.md5(bytes(pkt)).hexdigest()
+                        if h not in seen_hashes[i]:
+                            seen_hashes[i].add(h)
+                            buckets[i].append(pkt)
                         break
 
     index_path = out_root / "dataset_index.csv"

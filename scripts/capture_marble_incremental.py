@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import csv
 import functools
+import hashlib
 import json
 import os
 import shutil
@@ -219,7 +220,24 @@ def main() -> None:
                         out_pcap_path = ""
                         calls_path = ""
                         if rec["ok"]:
-                            bucket = [p for p in all_packets if rec["t_start"] - 1.0 <= float(p.time) <= rec["t_end"] + 1.0]
+                            raw_bucket = [p for p in all_packets if rec["t_start"] - 1.0 <= float(p.time) <= rec["t_end"] + 1.0]
+                            # Dedupe byte-identical packets -- if an orphaned
+                            # tcpdump process from a prior interrupted run is
+                            # still alive (we don't have passwordless sudo
+                            # kill, so this happens), it independently
+                            # captures the same real traffic into the same
+                            # shared file, producing exact duplicate records.
+                            # Confirmed via md5: duplicates are byte-for-byte
+                            # identical, so keeping first-occurrence-only is
+                            # safe and recovers the correct single-capture
+                            # stream, not data loss.
+                            seen_hashes = set()
+                            bucket = []
+                            for p in raw_bucket:
+                                h = hashlib.md5(bytes(p)).hexdigest()
+                                if h not in seen_hashes:
+                                    seen_hashes.add(h)
+                                    bucket.append(p)
                             base_name = f"{category}_{topology}_ollama-llama3.2-3b_{task_id:03d}_rep{repetition_id}"
                             if bucket:
                                 out_pcap_path = str(llm_dir / f"{base_name}.pcap")
